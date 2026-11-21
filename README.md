@@ -1,3 +1,32 @@
-# SpaceOpera
+# SpaceOpera — 巨大、冰冷的數位空間 Reverb（AU / VST3）
 
-Cold, huge digital-space reverb (AU / VST3). Work in progress.
+一個太空人在宇宙裡漂流。每顆旋鈕都會改變聲音，也會改變畫面。
+
+| 旋鈕 | 聲音 | 畫面 |
+|---|---|---|
+| **PRE-DELAY** | reverb 晚多久出現（0–500 ms，或按 **MS/SYNC** 切成 1/64–1/4 拍） | 太空人離太空梭越遠，安全繩被拉直 |
+| **DECAY** | 尾巴長度 0.3–20 秒；轉到底 = **∞ 凍結**（空間停住、一直延續） | 星星拖尾變長；∞ 時時間停止、整個畫面結冰 |
+| **SIZE** | 空間大小：房間 → 巨型機庫 | 鏡頭往後拉遠，太空人和太空梭變小 |
+| **COLD** | 冷度：暖、柔 → 亮、透、像玻璃 | 色溫從暖紫轉成冰藍，面罩結霜 |
+| **WIDTH** | 立體寬度 0–150% | 星空往兩側展開 |
+| **DUCK** | 自動讓路（內建 sidechain）：有聲音時 reverb 退開，空檔才湧出 | 聲音進來時太空人被推開 |
+| **MIX** | 乾濕比 | 遠方星雲變濃、跟著尾巴脈動 |
+| **SHIMMER** | 尾巴多一層往上高八度的亮光 | 太空人周圍飄起極光粒子 |
+
+內建 180 Hz low cut：reverb 只在中高頻展開，808 和 sub 永遠乾淨。
+滑鼠移到旋鈕上，下方文字會顯示目前數值。
+
+## 技術
+- 8 路反饋延遲網路（FDN，Householder 矩陣）＋輸入擴散＋緩慢調變：尾巴密、平滑、不金屬
+- Shimmer：+12 半音音高位移放在回授迴圈裡，帶通限制避免失控
+- 省資源：MIX = 0 或沒有聲音、尾巴也結束時，外掛直接放行（約 0.02% CPU）；運作時約單核 1%
+
+## 安裝
+到 GitHub **Releases** 下載：
+- Mac：`SpaceOpera-1.0.0-mac.pkg` → 雙擊安裝（AU + VST3）
+- Windows：`SpaceOpera-1.0.0-win-setup.exe`（VST3，Ableton / FL Studio / Cubase）
+
+第一次開啟若被擋：Mac → 系統設定 › 隱私權與安全性 › 仍要打開；Windows → 其他資訊 › 仍要執行。
+
+## 授權
+介面字型 Michroma 採 SIL Open Font License（見 `Assets/Michroma-OFL.txt`）。

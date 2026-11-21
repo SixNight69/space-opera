@@ -1,0 +1,74 @@
+name: Build installers (macOS + Windows)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build AU + VST3 and .pkg installer
+        run: |
+          chmod +x make_installer.sh
+          ./make_installer.sh
+
+      - name: Validate Audio Unit (auval)
+        continue-on-error: true
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "build-release/SpaceOpera_artefacts/Release/AU/SpaceOpera.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -v aufx Spop Riot | tail -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: dist/*.pkg
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build VST3
+        run: |
+          cmake -B build-win -A x64 -DRIOT_COPY_AFTER_BUILD=OFF
+          cmake --build build-win --config Release --target SpaceOpera_VST3 --parallel
+
+      - name: Make setup.exe + portable zip
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\windows.iss
+          Compress-Archive -Path "build-win/SpaceOpera_artefacts/Release/VST3/SpaceOpera.vst3" -DestinationPath dist/SpaceOpera-1.0.0-win-vst3.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  release:
+    needs: [ mac, windows ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          gh release create "build-${{ github.run_number }}" out/* \
+            --repo "${{ github.repository }}" \
+            --title "SpaceOpera (build ${{ github.run_number }})" \
+            --notes "Mac: download the .pkg and double-click (AU for Logic + VST3). Windows: run the setup.exe (installs VST3 to C:\\Program Files\\Common Files\\VST3), or unzip the .vst3 manually."
