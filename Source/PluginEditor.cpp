@@ -199,25 +199,29 @@ void SpaceOperaEditor::timerCallback()
         s.twinkle += dt * timeScale * 2.0f;
     }
 
-    // shimmer: aurora sparks rising around the astronaut
+    // shimmer: full-screen meteor shower (denser when the reverb tail is loud)
     if (vShimmer > 0.05f && timeScale > 0.05f)
     {
-        const int count = (int) (vShimmer * (1.0f + 4.0f * vWet) + rng.nextFloat());
-        const float ax = lerp (480.0f, 620.0f, vPre), ay = 230.0f;
+        const int count = (int) (vShimmer * (0.35f + 1.6f * vWet) + rng.nextFloat());
         for (int i = 0; i < count; ++i)
         {
-            Spark sp;
-            sp.pos = { ax + (rng.nextFloat() - 0.5f) * 240.0f, ay + (rng.nextFloat() - 0.2f) * 200.0f };
-            sp.vel = { (rng.nextFloat() - 0.5f) * 10.0f, -(14.0f + rng.nextFloat() * 30.0f) };
-            sp.maxLife = sp.life = 1.5f + rng.nextFloat() * 2.0f;
-            sp.size = 1.5f + rng.nextFloat() * 3.0f;
+            Spark m;
+            const float ang = MathConstants<float>::pi * (0.80f + (rng.nextFloat() - 0.5f) * 0.05f); // down-left
+            const float speed = 520.0f + rng.nextFloat() * 480.0f;
+            m.vel = { std::cos (ang) * speed, std::sin (ang) * speed };   // screen y points down
+            // enter from the top edge or the right edge
+            if (rng.nextFloat() < 0.65f) m.pos = { rng.nextFloat() * (W + 260.0f), -20.0f - rng.nextFloat() * 60.0f };
+            else                         m.pos = { W + 20.0f + rng.nextFloat() * 60.0f, rng.nextFloat() * H * 0.55f };
+            m.maxLife = m.life = 1.6f;
+            m.size = 50.0f + rng.nextFloat() * 130.0f;                    // tail length
             const float pick = rng.nextFloat();
-            sp.colour = pick < 0.45f ? ice : pick < 0.8f ? Colours::white : Colour (0xffb79cff);
-            sparks.push_back (sp);
+            m.colour = pick < 0.55f ? Colours::white : pick < 0.85f ? ice : Colour (0xffb79cff);
+            sparks.push_back (m);
         }
     }
     for (auto& sp : sparks) { sp.pos += sp.vel * dt * timeScale; sp.life -= dt * timeScale; }
-    sparks.erase (std::remove_if (sparks.begin(), sparks.end(), [] (const Spark& s) { return s.life <= 0.0f; }), sparks.end());
+    sparks.erase (std::remove_if (sparks.begin(), sparks.end(), [] (const Spark& s)
+                  { return s.life <= 0.0f || s.pos.x < -250.0f || s.pos.y > (float) H + 250.0f; }), sparks.end());
     if (sparks.size() > 400) sparks.erase (sparks.begin(), sparks.begin() + (long) (sparks.size() - 400));
 
     repaint();
@@ -272,6 +276,21 @@ void SpaceOperaEditor::drawScene (Graphics& g)
             g.setColour (Colours::white.withAlpha (a));
             g.fillEllipse (Rectangle<float> (1.0f + 1.6f * s.depth, 1.0f + 1.6f * s.depth).withCentre (p));
         }
+    }
+
+    // 4b. SHIMMER: meteor shower across the whole sky
+    for (const auto& m : sparks)
+    {
+        const float fade = jmin (1.0f, m.life / m.maxLife * 2.0f) * vShimmer;
+        const auto dir = m.vel / jmax (1.0f, m.vel.getDistanceFromOrigin());
+        const auto tail = m.pos - dir * m.size;
+        g.setGradientFill (ColourGradient (m.colour.withAlpha (0.9f * fade), m.pos,
+                                           m.colour.withAlpha (0.0f), tail, false));
+        g.drawLine (Line<float> (tail, m.pos), 1.8f);
+        g.setColour (m.colour.withAlpha (0.25f * fade));
+        g.fillEllipse (Rectangle<float> (9.0f, 9.0f).withCentre (m.pos));
+        g.setColour (Colours::white.withAlpha (fade));
+        g.fillEllipse (Rectangle<float> (3.0f, 3.0f).withCentre (m.pos));
     }
 
     // 5. shuttle (far, upper-left); gets smaller as SIZE grows, parallax with WIDTH
@@ -335,17 +354,6 @@ void SpaceOperaEditor::drawScene (Graphics& g)
             const auto tip  = vc.getPointOnCircumference (vr * (0.95f - len * vCold * 0.6f), a + 0.15f);
             g.drawLine (Line<float> (edge, tip), 1.0f);
         }
-    }
-
-    // 9. SHIMMER: aurora sparks
-    for (const auto& sp : sparks)
-    {
-        const float life = sp.life / sp.maxLife;
-        const float a = std::sin (life * MathConstants<float>::pi) * vShimmer;
-        g.setColour (sp.colour.withAlpha (0.25f * a));
-        g.fillEllipse (Rectangle<float> (sp.size * 3.0f, sp.size * 3.0f).withCentre (sp.pos));
-        g.setColour (sp.colour.withAlpha (0.9f * a));
-        g.fillEllipse (Rectangle<float> (sp.size, sp.size).withCentre (sp.pos));
     }
 
     // 10. freeze: time stops, the world turns to ice

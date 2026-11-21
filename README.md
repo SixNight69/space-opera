@@ -11,7 +11,7 @@
 | **WIDTH** | 立體寬度 0–150% | 星空往兩側展開 |
 | **DUCK** | 自動讓路（內建 sidechain）：有聲音時 reverb 退開，空檔才湧出 | 聲音進來時太空人被推開 |
 | **MIX** | 乾濕比 | 遠方星雲變濃、跟著尾巴脈動 |
-| **SHIMMER** | 尾巴多一層往上高八度的亮光 | 太空人周圍飄起極光粒子 |
+| **SHIMMER** | 尾巴多一層往上高八度的亮光 | 全屏流星雨（尾巴越大聲越密） |
 
 內建 180 Hz low cut：reverb 只在中高頻展開，808 和 sub 永遠乾淨。
 滑鼠移到旋鈕上，下方文字會顯示目前數值。
@@ -23,8 +23,8 @@
 
 ## 安裝
 到 GitHub **Releases** 下載：
-- Mac：`SpaceOpera-1.0.0-mac.pkg` → 雙擊安裝（AU + VST3）
-- Windows：`SpaceOpera-1.0.0-win-setup.exe`（VST3，Ableton / FL Studio / Cubase）
+- Mac：`SpaceOpera-1.1.0-mac.pkg` → 雙擊安裝（AU + VST3）
+- Windows：`SpaceOpera-1.1.0-win-setup.exe`（VST3，Ableton / FL Studio / Cubase）
 
 第一次開啟若被擋：Mac → 系統設定 › 隱私權與安全性 › 仍要打開；Windows → 其他資訊 › 仍要執行。
 
