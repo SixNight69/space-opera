@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 NAME="SpaceOpera"
-VERSION="1.1.0"
+VERSION="1.2.0"
 BUNDLE_ID="com.riotaudio.spaceopera"
 DEV_APP_ID="${DEV_APP_ID:-}"
 DEV_INSTALLER_ID="${DEV_INSTALLER_ID:-}"

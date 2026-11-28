@@ -47,7 +47,7 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\windows.iss
-          Compress-Archive -Path "build-win/SpaceOpera_artefacts/Release/VST3/SpaceOpera.vst3" -DestinationPath dist/SpaceOpera-1.1.0-win-vst3.zip
+          Compress-Archive -Path "build-win/SpaceOpera_artefacts/Release/VST3/SpaceOpera.vst3" -DestinationPath dist/SpaceOpera-1.2.0-win-vst3.zip
 
       - uses: actions/upload-artifact@v4
         with:

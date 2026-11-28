@@ -1,5 +1,5 @@
 ; Inno Setup script: SpaceOpera VST3 installer for Windows (Ableton Live, FL Studio, Cubase, ...)
-#define AppVer "1.1.0"
+#define AppVer "1.2.0"
 
 [Setup]
 AppId={{9A4C2E11-5B7D-4F3A-8E21-5ACE0BE7A001}

@@ -5,7 +5,8 @@
 
 // SpaceOpera: a cold, huge digital-space reverb.
 //   8-line feedback delay network (Householder matrix) + input diffusion + slow modulation,
-//   optional +12 st shimmer in the loop, infinite (freeze) decay, self-ducking, wet low cut.
+//   shimmer (two detuned +12 st voices, heard directly and fed back), infinite decay that keeps
+//   taking new sound in (held by an AGC), self-ducking, wet low cut.
 class SpaceOperaProcessor : public juce::AudioProcessor
 {
 public:
@@ -101,6 +102,11 @@ private:
     float preSmoothed = 0.0f;
     float inGain = 1.0f;               // fades the input out when DECAY is at infinity (freeze)
     float shimmerPhase = 0.0f, shimmerWindow = 2000.0f, shimmerSmoothed = 0.0f, shimmerLp = 0.0f, shimmerLpA = 0.5f, shimmerHp = 0.0f, shimmerHpA = 0.02f;
+    float shimmerPhase2 = 0.0f, shimmerLp2 = 0.0f, shimmerHp2 = 0.0f;
+    float tankEnv = 0.0f;            // mean tank level, drives the infinite-decay AGC
+    float infGain = 1.0f;            // extra wet level while DECAY is at infinity
+    float loopHp[8] {};              // in-loop high-pass state per line
+    float loopHpA = 0.01f;
 
     float duckEnv = 0.0f, duckAtt = 0.9f, duckRel = 0.999f;
     float levelEnvIn = 0.0f, levelEnvWet = 0.0f;

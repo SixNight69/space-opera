@@ -111,9 +111,14 @@ void SpaceOperaProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     shimmerBuf.prepare ((int) (shimmerWindow * 2.0f) + 8);
     shimmerPhase = 0.0f;
     shimmerSmoothed = 0.0f;
-    shimmerLp = shimmerHp = 0.0f;
-    shimmerHpA = (float) (1.0 - std::exp (-MathConstants<double>::twoPi * 200.0 / sr));
-    shimmerLpA = (float) (1.0 - std::exp (-MathConstants<double>::twoPi * 5000.0 / sr));
+    shimmerLp = shimmerHp = shimmerLp2 = shimmerHp2 = 0.0f;
+    shimmerPhase2 = 0.37f;
+    shimmerHpA = (float) (1.0 - std::exp (-MathConstants<double>::twoPi * 300.0 / sr));
+    shimmerLpA = (float) (1.0 - std::exp (-MathConstants<double>::twoPi * 9000.0 / sr));
+    tankEnv = 0.0f;
+    infGain = 1.0f;
+    loopHpA = (float) (1.0 - std::exp (-MathConstants<double>::twoPi * 120.0 / sr));
+    for (auto& h : loopHp) h = 0.0f;
     preSmoothed = (float) (0.02 * sr);
 
     dsp::ProcessSpec spec { sampleRate, (uint32) samplesPerBlock, 2 };
@@ -194,11 +199,11 @@ void SpaceOperaProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
     {
         lenTarget[i] = lineMs[i] * 0.001f * sizeScale * (float) sr;
         // damping shortens the audible tail, so stretch the target a little to land near the knob value
-        const float decayEff = decay * (1.1f + 0.03f * decay);
+        const float decayEff = decay * (1.1f + 0.03f * decay) * (shimmerOn ? 1.25f : 1.0f);
         g[i] = freeze ? 1.0f : std::pow (10.0f, -3.0f * lenTarget[i] / (jmax (0.3f, decayEff) * (float) sr));
     }
     const float dampHz = 2500.0f * std::pow (16000.0f / 2500.0f, cold);
-    const float dampA  = freeze ? 1.0f : (float) (1.0 - std::exp (-MathConstants<double>::twoPi * dampHz / sr));
+    const float dampA  = (float) (1.0 - std::exp (-MathConstants<double>::twoPi * dampHz / sr));
     wetHighCut.setCutoffFrequency (6000.0f * std::pow (20000.0f / 6000.0f, cold) * 0.95f);
     const float modDepth = (0.25f + 1.0f * size) * 0.001f * (float) sr;
     const float diffScale = 0.6f + 0.6f * size;
@@ -206,25 +211,36 @@ void SpaceOperaProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
     for (int k = 0; k < numDiffusers; ++k)
         diffLen[k] = jmax (1, (int) (diffMs[k] * diffScale * 0.001f * (float) sr));
 
-    const float shimmerTarget = (shimmerOn && ! freeze) ? 0.5f : 0.0f;
-    const float inGainTarget  = freeze ? 0.0f : 1.0f;
+    const float shimmerTarget = shimmerOn ? 1.0f : 0.0f;
+    const float inGainTarget  = freeze ? 0.8f : 1.0f;   // infinite keeps taking new sound in
     const float glide   = (float) std::exp (-1.0 / (0.05 * sr));   // pre-delay / size glide
     const float smooth5 = (float) std::exp (-1.0 / (0.02 * sr));
-    const float shimInc = (1.0f - 2.0f) / shimmerWindow;           // +12 semitones
+    // two +12 st voices detuned by +/-6 cents: a slow chorus inside the octave layer
+    const float shimIncA = (1.0f - 2.0f * std::exp2 ( 6.0f / 1200.0f)) / shimmerWindow;
+    const float shimIncB = (1.0f - 2.0f * std::exp2 (-6.0f / 1200.0f)) / shimmerWindow;
     float wetPeak = 0.0f, tankPeak = 0.0f;
 
     for (int start = 0; start < n; start += chunk)
     {
         const int len = jmin (chunk, n - start);
 
-        // slow modulation, updated per chunk
+        // slow modulation, updated per chunk (deeper and dreamier with shimmer)
         float mod[numLines];
+        const float depth = modDepth * (1.0f + 0.8f * shimmerSmoothed);
         for (int i = 0; i < numLines; ++i)
         {
             lfoPhase[i] += lfoInc[i];
             if (lfoPhase[i] >= 1.0f) lfoPhase[i] -= 1.0f;
-            mod[i] = modDepth * (0.5f + 0.5f * std::sin (MathConstants<float>::twoPi * lfoPhase[i]));
+            mod[i] = depth * (0.5f + 0.5f * std::sin (MathConstants<float>::twoPi * lfoPhase[i]));
         }
+
+        // infinite: automatic gain control holds the tank at a big, steady level (never dies, never explodes)
+        float fb[numLines];
+        float agc = 1.0f;
+        if (freeze)
+            agc = jlimit (0.97f, 1.03f, 1.0f + 0.05f * (1.0f - tankEnv / 0.30f));
+        for (int i = 0; i < numLines; ++i) fb[i] = g[i] * agc;
+        float chunkAbs = 0.0f;
 
         for (int k = 0; k < len; ++k)
         {
@@ -268,34 +284,52 @@ void SpaceOperaProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
                 lineLen[i] = lenTarget[i] + glide * (lineLen[i] - lenTarget[i]);
                 const float v = lines[i].read (lineLen[i] + mod[i] + 1.0f);
                 damp[i] += dampA * (v - damp[i]);
-                y[i] = damp[i];
+                if (freeze)
+                {
+                    // infinite only: 120 Hz high-pass inside the loop so lows can't pile up
+                    loopHp[i] += loopHpA * (damp[i] - loopHp[i]);
+                    y[i] = damp[i] - loopHp[i];
+                }
+                else
+                {
+                    loopHp[i] = 0.0f;
+                    y[i] = damp[i];
+                }
                 sum += y[i];
                 tankPeak = jmax (tankPeak, std::abs (y[i]));
+                chunkAbs += std::abs (y[i]);
             }
 
             const float outL = 0.5f * (y[0] - y[2] + y[4] - y[6]);
             const float outR = 0.5f * (y[1] - y[3] + y[5] - y[7]);
 
-            // shimmer: +12 st pitch shift of the tank, fed back in
+            // shimmer: two detuned +12 st voices of (tank + a little of the input)
+            //   -> heard directly (A left, B right) AND fed back into the tank (octaves keep rising)
             shimmerSmoothed = shimmerTarget + smooth5 * (shimmerSmoothed - shimmerTarget);
-            float sh = 0.0f;
-            shimmerBuf.push (0.5f * (outL + outR));
+            float shA = 0.0f, shB = 0.0f;
+            shimmerBuf.push (0.5f * (outL + outR) + 0.35f * 0.5f * (xl + xr));
             if (shimmerSmoothed > 1.0e-4f)
             {
-                shimmerPhase += shimInc;
-                if (shimmerPhase < 0.0f) shimmerPhase += 1.0f;
-                float p2 = shimmerPhase + 0.5f;
-                if (p2 >= 1.0f) p2 -= 1.0f;
-                const float s1 = std::sin (MathConstants<float>::pi * shimmerPhase);
-                const float g1 = s1 * s1;
-                sh = (shimmerBuf.read (1.0f + shimmerPhase * shimmerWindow) * g1
-                      + shimmerBuf.read (1.0f + p2 * shimmerWindow) * (1.0f - g1)) * shimmerSmoothed;
-                // band-limit the octave cascade: 200 Hz high-pass (no DC latch-up) + 5 kHz low-pass
-                shimmerHp += shimmerHpA * (sh - shimmerHp);
-                sh -= shimmerHp;
-                shimmerLp += shimmerLpA * (sh - shimmerLp);
-                sh = shimmerLp;
+                auto voice = [this] (float& phase, float inc) noexcept
+                {
+                    phase += inc;
+                    if (phase < 0.0f) phase += 1.0f;
+                    float p2 = phase + 0.5f;
+                    if (p2 >= 1.0f) p2 -= 1.0f;
+                    const float s1 = std::sin (MathConstants<float>::pi * phase);
+                    const float g1 = s1 * s1;
+                    return shimmerBuf.read (1.0f + phase * shimmerWindow) * g1
+                         + shimmerBuf.read (1.0f + p2 * shimmerWindow) * (1.0f - g1);
+                };
+                shA = voice (shimmerPhase,  shimIncA) * shimmerSmoothed;
+                shB = voice (shimmerPhase2, shimIncB) * shimmerSmoothed;
+                // airy band: 300 Hz high-pass (no DC latch-up) + 9 kHz low-pass
+                shimmerHp  += shimmerHpA * (shA - shimmerHp);   shA -= shimmerHp;
+                shimmerLp  += shimmerLpA * (shA - shimmerLp);   shA  = shimmerLp;
+                shimmerHp2 += shimmerHpA * (shB - shimmerHp2);  shB -= shimmerHp2;
+                shimmerLp2 += shimmerLpA * (shB - shimmerLp2);  shB  = shimmerLp2;
             }
+            const float sh = 0.45f * 0.5f * (shA + shB);       // feedback share
 
             // Householder feedback + injection
             const float h = 0.25f * sum;   // 2/N
@@ -303,12 +337,12 @@ void SpaceOperaProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
             for (int i = 0; i < numLines; ++i)
             {
                 const float inj = ((i & 1) ? injR : injL) * (((i >> 1) & 1) ? -1.0f : 1.0f);
-                lines[i].push (softClip ((y[i] - h) * g[i] + inj));
+                lines[i].push (softClip ((y[i] - h) * fb[i] + inj));
             }
 
             // wet path: low cut (keeps 808/sub clean), high cut (cold), width, ducking
-            float wl = wetLowCut.processSample (0, outL);
-            float wr = wetLowCut.processSample (1, outR);
+            float wl = wetLowCut.processSample (0, outL + 0.65f * shA);
+            float wr = wetLowCut.processSample (1, outR + 0.65f * shB);
             wl = wetHighCut.processSample (0, wl);
             wr = wetHighCut.processSample (1, wr);
 
@@ -318,7 +352,8 @@ void SpaceOperaProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
             wr = mid - side;
 
             const float duckDb = -24.0f * duck * jlimit (0.0f, 1.0f, (gainToDb (duckEnv) + 40.0f) / 25.0f);
-            const float dg = dbToGain (duckDb) * wetScale;
+            infGain = (freeze ? 1.5f : 1.0f) + smooth5 * (infGain - (freeze ? 1.5f : 1.0f));   // infinite sits bigger
+            const float dg = dbToGain (duckDb) * wetScale * infGain;
             wl = safety (wl * dg);
             wr = safety (wr * dg);
             wetPeak = jmax (wetPeak, std::abs (wl), std::abs (wr));
@@ -329,6 +364,7 @@ void SpaceOperaProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
             L[s] = dryL * dryG + wl * wetG;
             if (stereo) R[s] = dryR * dryG + wr * wetG;
         }
+        tankEnv = 0.97f * tankEnv + 0.03f * chunkAbs / (float) (numLines * len);
     }
 
     wetLowCut.snapToZero();
